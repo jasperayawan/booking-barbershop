@@ -1,34 +1,47 @@
 
 
 <?php
+declare(strict_types=1);
 
-// Database Configuration
-// $servername = "localhost";
-// $username = "root";
-// $password = "";
-// $dbname = "sharpcuts_db";
+function sharpcuts_db(): PDO
+{
+    // Database Configuration
+    // $servername = "localhost";
+    // $username = "root";
+    // $password = "";
+    // $dbname = "sharpcuts_db";
 
-// Database Configuration
-$servername = "sql100.infinityfree.com";
-$username = "if0_41667024";
-$password = "1p9RoPSkK13BW"; 
-$dbname = "if0_41667024_sharpcuts_db";
+    // Credentials based on your updated setup
+    $host = getenv('DB_HOST') ?: 'sql100.infinityfree.com';
+    $port = getenv('DB_PORT') ?: '3306';
+    $user = getenv('DB_USER') ?: 'if0_41667024';
+    $pass = getenv('DB_PASS') ?: ''; 
+    $db   = getenv('DB_NAME') ?: 'if0_41667024_sharpcuts_db';
 
-// Create connection
-// Note: We use $password here, not an empty string
-$conn = new mysqli($servername, $username, $password, $dbname);
+    $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4";
 
-// Check connection
-if ($conn->connect_error) {
-    // Setting header to JSON since your error handling returns JSON
-    header('Content-Type: application/json');
-    die(json_encode([
-        'success' => false,
-        'message' => 'Database connection failed: ' . $conn->connect_error
-    ]));
+    // Best practice options for security and usability
+    $options = [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+    ];
+
+    try {
+        return new PDO($dsn, $user, $pass, $options);
+    } catch (PDOException $e) {
+        // Log the actual error internally
+        error_log("Connection Error: " . $e->getMessage());
+
+        // Throw a clean response for the front-end/app
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Database connection failed. Please try again later.'
+        ]);
+        exit;
+    }
 }
 
-// Set charset to utf8
-$conn->set_charset("utf8");
-
-?>
+// Initialize the connection
+$pdo = sharpcuts_db();
