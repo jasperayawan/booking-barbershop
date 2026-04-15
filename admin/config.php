@@ -9,7 +9,7 @@
 // $dbname = "sharpcuts_db";
 
 // Database Configuration
-$servername = "sqlXXX.infinityfree.com";
+$servername = "sql100.infinityfree.com";
 $username = "if0_41667024";
 $password = "1p9RoPSkK13BW"; 
 $dbname = "if0_41667024_sharpcuts_db";
