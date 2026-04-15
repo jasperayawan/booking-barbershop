@@ -33,7 +33,7 @@ $upcoming = $conn->query("
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=1.0.1">
 </head>
 <body>
   <div class="admin-container">
@@ -168,7 +168,7 @@ $upcoming = $conn->query("
     </div>
   </div>
 
-  <script src="js/admin.js"></script>
+  <script src="js/admin.js?v=1.0.1"></script>
   <script>
     function logoutUser() {
       if (confirm('Are you sure you want to logout?')) {

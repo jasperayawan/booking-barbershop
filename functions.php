@@ -104,6 +104,23 @@ function loginUser($email, $password) {
 
 // Logout user
 function logoutUser() {
+    // Clear all session variables immediately.
+    $_SESSION = [];
+
+    // Remove session cookie when cookies are used.
+    if (ini_get('session.use_cookies')) {
+        $params = session_get_cookie_params();
+        setcookie(
+            session_name(),
+            '',
+            time() - 42000,
+            $params['path'],
+            $params['domain'],
+            $params['secure'],
+            $params['httponly']
+        );
+    }
+
     session_destroy();
     return ['success' => true, 'message' => 'Logged out successfully'];
 }
@@ -196,4 +213,17 @@ function getUserAppointments($user_id) {
 
 // Initialize database on app start
 createUsersTable();
+
+// Global logout handler for non-API pages that post `action=logout`.
+$script_name = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+$is_api_request = strpos($script_name, '/api/') !== false;
+if (
+    !$is_api_request &&
+    ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' &&
+    (($_POST['action'] ?? '') === 'logout')
+) {
+    logoutUser();
+    header('Location: index.php');
+    exit;
+}
 ?>

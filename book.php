@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.0.1">
     <style>
         :root {
             --primary: #8A38F5;
@@ -810,7 +810,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         function logoutUser() {
             if (confirm('Are you sure you want to logout?')) {
-                fetch('/api/auth.php', {
+                fetch('api/auth.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'logout' })

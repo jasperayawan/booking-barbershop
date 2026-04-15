@@ -18,7 +18,7 @@ $current_user = getCurrentUser();
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=1">
+  <link rel="stylesheet" href="styles.css?v=1.0.1">
   <style>
     .user-list {
       background: var(--white);
@@ -360,7 +360,7 @@ $current_user = getCurrentUser();
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-logo">
-        <a href="../index.html">Sharp<span>Cuts</span></a>
+        <a href="../index.php">Sharp<span>Cuts</span></a>
       </div>
       <nav class="sidebar-nav">
         <li><a href="dashboard.php">📊 Dashboard</a></li>
@@ -474,7 +474,7 @@ $current_user = getCurrentUser();
     </div>
   </div>
 
-  <script src="js/admin.js"></script>
+  <script src="js/admin.js?v=1.0.1"></script>
   <script>
     let currentPage = 1;
     let editingUserId = null;

@@ -99,7 +99,7 @@ document.querySelectorAll('.logout-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (confirm('Are you sure you want to logout?')) {
       // TODO: Implement actual logout
-      window.location.href = '../index.html';
+      window.location.href = '../index.php';
     }
   });
 });
