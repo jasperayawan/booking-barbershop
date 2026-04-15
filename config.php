@@ -8,7 +8,7 @@
 $servername = getenv('DB_HOST') ?: 'sql100.infinityfree.com';
 $dbname   = getenv('DB_NAME') ?: 'if0_41667024_sharpcuts_db';
 $username = getenv('DB_USER') ?: 'if0_41667024';
-password = getenv('DB_PASS') ?: '1p9RoPSkK13BW';
+$password = getenv('DB_PASS') ?: '1p9RoPSkK13BW';
 
 // Create connection
 $conn = new mysqli($servername, $username, $password, $dbname);
