@@ -98,7 +98,7 @@ if ($barbersResult && $barbersResult->num_rows > 0) {
                     <?php foreach ($barbers as $barber): ?>
                         <article style="background:#fff; border-radius:20px; overflow:hidden; box-shadow:0 12px 30px rgba(0,0,0,.08);">
                             <div style="position:relative;">
-                                <img src="assets/person-testimony1.png" alt="<?php echo htmlspecialchars($barber['name']); ?>" style="width:100%; height:220px; object-fit:cover;">
+                                <img src="<?php echo !empty($barber['photo_url']) ? htmlspecialchars($barber['photo_url']) : 'assets/default-avatar.png'; ?>" alt="<?php echo htmlspecialchars($barber['name']); ?>" style="width:100%; height:220px; object-fit:cover;">
                                 <span style="position:absolute; top:12px; right:12px; background:#E0FFE7; color:#2F9C45; padding:5px 10px; border-radius:999px; font-size:12px;">Available</span>
                             </div>
                             <div style="padding:16px;">

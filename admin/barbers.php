@@ -168,8 +168,15 @@ $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Su
         </div>
 
         <div class="form-group">
-          <label for="barberPhoto">Photo URL</label>
-          <input type="url" id="barberPhoto" placeholder="https://...">
+          <label>Current Photo</label>
+          <div id="photoPreviewContainer" style="margin-bottom: 10px;">
+            <img id="currentBarberPhoto" src="" alt="Preview" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; display: none; border: 1px solid var(--gray-200);">
+          </div>
+          
+          <label for="barberPhoto">Upload New Photo (Leave blank to keep current)</label>
+          <input type="file" id="barberPhoto" accept="image/*">
+          
+          <input type="hidden" id="existingPhotoPath">
         </div>
 
         <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--gray-200);">
@@ -223,21 +230,134 @@ $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Su
     generateAvailabilityForm();
 
     // Open modal for new barber
-    newBtn.addEventListener('click', () => {
-      document.getElementById('barberId').value = '';
+    newBtn.addEventListener('click', async () => {
       barberForm.reset();
+
+      document.getElementById('barberId').value = '';
+      document.getElementById('currentBarberPhoto').style.display = 'none';
+      document.getElementById('existingPhotoPath').value = '';
+
       document.querySelector('#barberModal .modal-title').textContent = 'Add Barber';
-      barberModal.classList.add('active');
+      barberModal.classList.add('active');  
     });
 
-    // Edit barber
-    document.querySelectorAll('.edit-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const id = this.dataset.id;
-        document.querySelector('#barberModal .modal-title').textContent = 'Edit Barber';
-        barberModal.classList.add('active');
+
+
+    barberForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData();
+      const id = document.getElementById('barberId').value;
+
+      formData.append('action', id ? 'update-barber' : 'create-barber');
+      if (id) formData.append('id', id);
+
+      formData.append('name', document.getElementById('barberName').value);
+      formData.append('title', document.getElementById('barberTitle').value);
+      formData.append('specialties', document.getElementById('barberSpecialties').value);
+      formData.append('rating', document.getElementById('barberRating').value || 0);
+      formData.append('experience_years', document.getElementById('barberExperience').value);
+      formData.append('existing_photo', document.getElementById('existingPhotoPath').value);
+
+      const fileInput = document.getElementById('barberPhoto');
+      if (fileInput.files[0]) {
+        formData.append('photo', fileInput.files[0]);
+      }
+
+      days.forEach(day => {
+        const isChecked = document.querySelector(`.day-checkbox[data-day="${day}"]`).checked;
+        formData.append(`available_${day}`, isChecked ? '1' : '0');
+        formData.append(`start_time_${day}`, document.querySelector(`.start-time[data-day="${day}"]`).value);
+        formData.append(`end_time_${day}`, document.querySelector(`.end-time[data-day="${day}"]`).value);
       });
-    });
+
+      try {
+        const response = await fetch('../api/barbers.php', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          barberModal.classList.remove('active');
+          barberForm.reset();
+          alert(id ? 'Barber updated!' : 'Barber added!');
+          location.reload();
+        } else {
+          alert('Error: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Submission error:', error);
+      }
+    })
+
+
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const id = this.dataset.id;
+          const response = await fetch(`../api/barbers.php?action=get-barber&id=${id}`);
+          const result = await response.json();
+
+          if (result.success) {
+            const data = result.barber;
+
+            document.getElementById('barberId').value = data.id
+            
+            // Populate EVERYTHING including the ID
+            document.getElementById('barberName').value = data.name;
+            document.getElementById('barberTitle').value = data.title;
+            document.getElementById('barberSpecialties').value = data.specialties;
+            document.getElementById('barberRating').value = data.rating;
+            document.getElementById('barberExperience').value = data.experience_years;
+
+            // Restore Availability
+            if (data.availability) {
+                data.availability.forEach(av => {
+                    const day = av.day_of_week;
+                    // Select the specific inputs for this day using data-attributes
+                    const checkbox = document.querySelector(`.day-checkbox[data-day="${day}"]`);
+                    const startInput = document.querySelector(`.start-time[data-day="${day}"]`);
+                    const endInput = document.querySelector(`.end-time[data-day="${day}"]`);
+
+                    if (checkbox) {
+                        // Convert "1"/1 to true, "0"/0 to false
+                        checkbox.checked = (parseInt(av.is_available) === 1);
+                    }
+                    
+                    if (startInput && av.start_time) {
+                        // DB might return "09:00:00", HTML input needs "09:00"
+                        startInput.value = av.start_time.substring(0, 5);
+                    }
+                    
+                    if (endInput && av.end_time) {
+                        endInput.value = av.end_time.substring(0, 5);
+                    }
+                });
+            }
+
+            // Reset file input (user hasn't picked a new one yet)
+            document.getElementById('barberPhoto').value = '';
+
+            // Set photo preview and the hidden "existing_photo" path
+            const previewImg = document.getElementById('currentBarberPhoto');
+            const hiddenPath = document.getElementById('existingPhotoPath');
+            
+            if (data.photo_url) {
+              previewImg.src = `../${data.photo_url}`;
+              previewImg.style.display = 'block';
+              hiddenPath.value = data.photo_url;
+            }
+
+            // Restore Availability
+            // ... (your existing loop for checkboxes and times) ...
+
+            document.querySelector('#barberModal .modal-title').textContent = 'Edit Barber';
+            barberModal.classList.add('active');
+          }
+        });
+      });
+
+
 
     // Delete barber
     document.querySelectorAll('.delete-btn').forEach(btn => {
@@ -249,12 +369,6 @@ $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Su
       });
     });
 
-    // Handle form submission
-    barberForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      // TODO: Submit form via API
-      console.log('Barber form submitted');
-    });
 
     function logoutUser() {
       if (confirm('Are you sure you want to logout?')) {

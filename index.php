@@ -116,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
 
       <div class="hero-right reveal">
-        <img src="assets/hero-img.png" alt="Barber cutting hair" class="hero-img">
+        <img src="assets/herobgSharpcuts.svg" alt="Barber cutting hair" class="hero-img">
         <div class="floating-card top-left">
           <div class="fc-icon">
             <img src="assets/star.svg" alt="">

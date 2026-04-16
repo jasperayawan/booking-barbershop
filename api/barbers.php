@@ -5,6 +5,26 @@ include '../admin/config.php';
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $_GET['action'] ?? '';
 
+    if ($action === 'get-barber') {
+        $id = intval($_GET['id'] ?? 0);
+
+        $result = $conn->query("SELECT * FROM barbers WHERE id = $id");
+        $barber = $result->fetch_assoc(); 
+
+        if ($barber) {
+            $availability = [];
+            $av_result = $conn->query("SELECT * FROM barber_availability WHERE barber_id = $id");
+            while ($row = $av_result->fetch_assoc()) {
+                $availability[] = $row;
+            }
+            $barber['availability'] = $availability;
+            echo json_encode(['success' => true, 'barber' => $barber]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Barber not found']);
+        }
+        exit;
+    }
+
     if ($action === 'get-availability') {
         $barber_id = intval($_GET['barber_id'] ?? 0);
         $date = $_GET['date'] ?? '';
@@ -72,7 +92,21 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $specialties = $conn->real_escape_string($_POST['specialties'] ?? '');
         $rating = floatval($_POST['rating'] ?? 0);
         $experience_years = intval($_POST['experience_years'] ?? 0);
-        $photo_url = $conn->real_escape_string($_POST['photo_url'] ?? '');
+        
+        $photo_url = $_POST['existing_photo'] ?? ''; 
+
+        if (isset($_FILES['photo']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
+            $uploadDir = '../uploads/barbers/';
+            if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+
+            $fileExtension = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
+            $newFileName = uniqid('barber_') . '.' . $fileExtension;
+            $targetPath = $uploadDir . $newFileName;
+
+            if (move_uploaded_file($_FILES['photo']['tmp_name'], $targetPath)) {
+                $photo_url = 'uploads/barbers/' . $newFileName;
+            }
+        }
 
         if (!$name || !$title || !$specialties) {
             echo json_encode(['success' => false, 'message' => 'Missing required fields']);
@@ -96,7 +130,11 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               VALUES ($barber_id, '$day', '$start_time', '$end_time', $is_available)");
             }
 
-            echo json_encode(['success' => true, 'message' => 'Barber created', 'id' => $barber_id]);
+            $result = $conn->query("SELECT * FROM barbers WHERE id = $barber_id");
+            $newBarber = $result->fetch_assoc();
+
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Barber created', 'barber' => $newBarber]);
         } else {
             echo json_encode(['success' => false, 'message' => 'Database error: ' . $conn->error]);
         }
@@ -108,21 +146,60 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $specialties = $conn->real_escape_string($_POST['specialties'] ?? '');
         $rating = floatval($_POST['rating'] ?? 0);
         $experience_years = intval($_POST['experience_years'] ?? 0);
-        $photo_url = $conn->real_escape_string($_POST['photo_url'] ?? '');
 
         if (!$id) {
             echo json_encode(['success' => false, 'message' => 'Invalid barber ID']);
             exit;
         }
+        
+        $photo_url = $_POST['existing_photo'] ?? '';
 
-        $query = "UPDATE barbers SET name='$name', title='$title', specialties='$specialties', 
-                  rating=$rating, experience_years=$experience_years, photo_url='$photo_url' WHERE id=$id";
+        if (isset($_FILES['photo']) && $_FILES['photo']['error'] === 0) {
+            $target_dir = "../uploads/barbers/";
+            if (!is_dir($target_dir)) mkdir($target_dir, 0777, true);
+
+            $fileExtension = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
+            $newFileName = uniqid('barber_') . '.' . $fileExtension;
+            $targetPath = $target_dir . $newFileName;
+
+            if (move_uploaded_file($_FILES['photo']['tmp_name'], $targetPath)) {
+                $photo_url = "uploads/barbers/" . $newFileName;
+            }
+        }
+
+        $query = "UPDATE barbers SET 
+              name='$name', 
+              title='$title', 
+              specialties='$specialties', 
+              rating=$rating, 
+              experience_years=$experience_years, 
+              photo_url='$photo_url' 
+              WHERE id=$id";
 
         if ($conn->query($query)) {
-            echo json_encode(['success' => true, 'message' => 'Barber updated']);
+            // UPDATE AVAILABILITY SCHEDULE
+            // The easiest way: Delete old rows and insert the updated ones
+            $conn->query("DELETE FROM barber_availability WHERE barber_id = $id");
+
+            $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            foreach ($days as $day) {
+                $is_available = (isset($_POST["available_$day"]) && $_POST["available_$day"] === '1') ? 1 : 0;
+                $start = $_POST["start_time_$day"] ?? '09:00';
+                $end = $_POST["end_time_$day"] ?? '19:00';
+
+                $conn->query("INSERT INTO barber_availability (barber_id, day_of_week, start_time, end_time, is_available) 
+                            VALUES ($id, '$day', '$start', '$end', $is_available)");
+            }
+
+            $result = $conn->query("SELECT * FROM barbers WHERE id = $id");
+            $updatedBarber = $result->fetch_assoc();
+
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Barber updated successfully', 'barber' => $updatedBarber]);
         } else {
             echo json_encode(['success' => false, 'message' => 'Database error: ' . $conn->error]);
         }
+        exit;
     }
     elseif ($action === 'delete-barber') {
         $id = intval($_POST['id'] ?? 0);
