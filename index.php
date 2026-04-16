@@ -13,6 +13,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 }
+
+$barbersResult = $conn->query("SELECT * FROM barbers ORDER BY name LIMIT 4");
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -256,105 +259,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </section>
 
   <!-- ===================== TEAM ===================== -->
-  <section id="Team">
-    <div class="section-header reveal">
-      <span class="badge">Our Team</span>
-      <h2>Meet Our Expert Barbers</h2>
-      <p>Our team of skilled barbers brings years of experience and passion to every single cut.</p>
-    </div>
-
-    <div class="team-grid">
-
+        <section id="Team">
+          <div class="section-header reveal">
+            <span class="badge">Our Team</span>
+            <h2>Meet Our Expert Barbers</h2>
+            <p>Our team of skilled barbers brings years of experience and passion to every single cut.</p>
+          </div>
+        
+          <div class="team-grid">
+  <?php if (isset($barbersResult) && $barbersResult->num_rows > 0): ?>
+    <?php while ($barber = $barbersResult->fetch_assoc()): ?>
       <article class="barber-card reveal">
         <div class="barber-img-wrap">
-          <img src="assets/person-testimony1.png" alt="Marcus Johnson">
+          <img src="<?php echo !empty($barber['photo_url']) ? $barber['photo_url'] : 'assets/default-barber.png'; ?>" 
+               alt="<?php echo htmlspecialchars($barber['name']); ?>">
+          
           <span class="barber-availability available">Available</span>
         </div>
+
         <div class="barber-info">
-          <h3>Marcus Johnson</h3>
-          <p class="barber-title">The Fade King</p>
+          <h3><?php echo htmlspecialchars($barber['name']); ?></h3>
+          <p class="barber-title"><?php echo htmlspecialchars($barber['title']); ?></p>
+          
           <div class="barber-tags">
-            <span class="barber-tag">Skin Fades</span>
-            <span class="barber-tag">Drop Fades</span>
+            <?php 
+              // Convert "Fade, Beard, Shaping" into an array and loop through them
+              $specs = explode(',', $barber['specialties']);
+              foreach ($specs as $spec): 
+                if(!empty(trim($spec))):
+            ?>
+              <span class="barber-tag"><?php echo htmlspecialchars(trim($spec)); ?></span>
+            <?php 
+                endif;
+              endforeach; 
+            ?>
           </div>
+
           <div class="barber-footer">
             <div>
-              <span class="barber-rating"><span class="star">★</span> 4.9</span>
-              <span class="barber-exp">8 years experience</span>
+              <span class="barber-rating">
+                <span class="star">★</span> <?php echo number_format($barber['rating'], 1); ?>
+              </span>
+              <span class="barber-exp"><?php echo $barber['experience_years']; ?> years experience</span>
             </div>
           </div>
-          <button class="barber-book-btn" onclick="<?php echo isLoggedIn() ? "window.location.href='book.php'" : "window.location.href='login.php'"; ?>">Book Now</button>
+
+          <button class="barber-book-btn" 
+                  onclick="<?php echo isLoggedIn() ? "window.location.href='book.php?barber_id=" . $barber['id'] . "'" : "window.location.href='login.php'"; ?>">
+            Book Now
+          </button>
         </div>
       </article>
-
-      <article class="barber-card reveal">
-        <div class="barber-img-wrap">
-          <img src="assets/person-testimony1.png" alt="David Smith">
-          <span class="barber-availability available">Available</span>
-        </div>
-        <div class="barber-info">
-          <h3>David Smith</h3>
-          <p class="barber-title">Beard Specialist</p>
-          <div class="barber-tags">
-            <span class="barber-tag">Beard Grooming</span>
-            <span class="barber-tag">Shaping</span>
-          </div>
-          <div class="barber-footer">
-            <div>
-              <span class="barber-rating"><span class="star">★</span> 4.8</span>
-              <span class="barber-exp">6 years experience</span>
-            </div>
-          </div>
-          <button class="barber-book-btn" onclick="<?php echo isLoggedIn() ? "window.location.href='book.php'" : "window.location.href='login.php'"; ?>">Book Now</button>
-        </div>
-      </article>
-
-      <article class="barber-card reveal">
-        <div class="barber-img-wrap">
-          <img src="assets/person-testimony1.png" alt="Alex Rodriguez">
-          <span class="barber-availability available">Available</span>
-        </div>
-        <div class="barber-info">
-          <h3>Alex Rodriguez</h3>
-          <p class="barber-title">Color Master</p>
-          <div class="barber-tags">
-            <span class="barber-tag">Hair Coloring</span>
-            <span class="barber-tag">Highlights</span>
-          </div>
-          <div class="barber-footer">
-            <div>
-              <span class="barber-rating"><span class="star">★</span> 4.7</span>
-              <span class="barber-exp">5 years experience</span>
-            </div>
-          </div>
-          <button class="barber-book-btn" onclick="<?php echo isLoggedIn() ? "window.location.href='book.php'" : "window.location.href='login.php'"; ?>">Book Now</button>
-        </div>
-      </article>
-
-      <article class="barber-card reveal">
-        <div class="barber-img-wrap">
-          <img src="assets/person-testimony1.png" alt="James Brown">
-          <span class="barber-availability available">Available</span>
-        </div>
-        <div class="barber-info">
-          <h3>James Brown</h3>
-          <p class="barber-title">Classic Master</p>
-          <div class="barber-tags">
-            <span class="barber-tag">Classic Cuts</span>
-            <span class="barber-tag">Hot Shave</span>
-          </div>
-          <div class="barber-footer">
-            <div>
-              <span class="barber-rating"><span class="star">★</span> 4.9</span>
-              <span class="barber-exp">10 years experience</span>
-            </div>
-          </div>
-          <button class="barber-book-btn" onclick="<?php echo isLoggedIn() ? "window.location.href='contact.php'" : "window.location.href='login.php'"; ?>">Book Now</button>
-        </div>
-      </article>
-
-    </div>
-  </section>
+    <?php endwhile; ?>
+  <?php else: ?>
+    <p class="no-barbers">Our team is currently preparing. Check back soon!</p>
+  <?php endif; ?>
+</div>
+        </section>
 
   <!-- ===================== PRICING ===================== -->
   <section id="Pricing" style="background: var(--primary-bg);">
