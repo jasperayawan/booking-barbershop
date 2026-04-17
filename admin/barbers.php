@@ -360,14 +360,37 @@ $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Su
 
 
     // Delete barber
-    document.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        if (confirm('Are you sure?')) {
-          const id = this.dataset.id;
-          // TODO: Delete barber via API
+    document.addEventListener('click', async function(e) {
+      const deleteBtn = e.target.closest('.delete-btn');
+
+      if (deleteBtn) {
+        const barberId = deleteBtn.getAttribute('data-id');
+
+        if(confirm('Are you sure you want to delete this barber? This will remove their availability.')) {
+          try {
+            const formData = new FormData();
+            formData.append('action','delete-barber');
+            formData.append('id', barberId)
+
+            const response = await fetch('../api/barbers.php', {
+              method: 'POST',
+              body: formData
+            })
+
+            const result = await response.json();
+
+            if (result.success) {
+              location.reload();
+            } else {
+              alert('Error: ', result.message)
+            }
+          } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred during deletion.');
+          }
         }
-      });
-    });
+      }
+    })
 
 
     function logoutUser() {

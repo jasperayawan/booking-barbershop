@@ -209,17 +209,26 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        // Delete availability first
-        $conn->query("DELETE FROM barber_availability WHERE barber_id=$id");
+        $result = $conn->query("SELECT photo_url FROM barbers WHERE id = $id");
+        $barber = $result->fetch_assoc();
 
-        // Delete barber
-        $query = "DELETE FROM barbers WHERE id=$id";
+        $conn->query("DELETE FROM barber_availability WHERE barber_id = $id");
+
+        $query = "DELETE FROM barbers WHERE id = $id";
 
         if ($conn->query($query)) {
-            echo json_encode(['success' => true, 'message' => 'Barber deleted']);
+            if ($barber && !empty($barber['photo_url'])) {
+                $filePath = "../../" . $barber['photo_url'];
+                
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
+            }
+            echo json_encode(['success' => true, 'message' => 'Barber and photo deleted successfully']);
         } else {
             echo json_encode(['success' => false, 'message' => 'Database error: ' . $conn->error]);
         }
+        exit;
     }
     else {
         echo json_encode(['success' => false, 'message' => 'Invalid action']);
