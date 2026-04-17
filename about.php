@@ -97,7 +97,7 @@ require_once 'functions.php';
             <h2 style="font-size:44px; margin:0 0 24px;">Why Choose <span style="color:#8A38F5;">SharpCuts</span>?</h2>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:30px; align-items:center;">
                 <div>
-                    <img src="assets/why-choose.jpg" alt="barber at work" style="width:100%; height:auto; border-radius:20px; object-fit:cover; box-shadow:0 14px 30px rgba(0,0,0,.12);">
+                    <img src="assets/abttt.svg" alt="barber at work" style="width:100%; height:auto; border-radius:20px; object-fit:cover; box-shadow:0 14px 30px rgba(0,0,0,.12);">
                 </div>
                 <div style="display:flex; flex-direction:column; gap:14px;">
                     <div style="background:#F4EBFF; border-radius:12px; padding:12px 14px; display:flex; gap:10px; align-items:center;"><span style="color:#8A38F5; font-weight:700;">✓</span><span>Expert Barbers – Skilled professionals with an eye for detail</span></div>
