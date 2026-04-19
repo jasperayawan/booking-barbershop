@@ -21,6 +21,7 @@ function createUsersTable() {
               `full_name` VARCHAR(100),
               `phone` VARCHAR(20),
               `role` ENUM('customer', 'barber', 'admin') DEFAULT 'customer',
+              `barber_id` INT NULL DEFAULT NULL,
               `is_active` BOOLEAN DEFAULT TRUE,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -79,7 +80,7 @@ function loginUser($email, $password) {
     }
     
     $email = $conn->real_escape_string($email);
-    $result = $conn->query("SELECT id, username, email, password_hash, role, full_name FROM users WHERE email = '$email' AND is_active = TRUE");
+    $result = $conn->query("SELECT id, username, email, password_hash, role, full_name, barber_id FROM users WHERE email = '$email' AND is_active = TRUE");
     
     if ($result->num_rows === 0) {
         return ['success' => false, 'message' => 'Email or password incorrect'];
@@ -133,6 +134,217 @@ function isLoggedIn() {
 // Check if user is admin
 function isAdmin() {
     return isLoggedIn() && isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+}
+
+// Check if user is a barber (staff role)
+function isBarber() {
+    return isLoggedIn() && isset($_SESSION['role']) && $_SESSION['role'] === 'barber';
+}
+
+/**
+ * Whether the users table has a barber_id column (links login to barbers.id).
+ */
+function usersTableHasBarberIdColumn() {
+    global $conn;
+    $r = @$conn->query("SHOW COLUMNS FROM users LIKE 'barber_id'");
+    return ($r && $r->num_rows > 0);
+}
+
+/**
+ * Add barber_id column on legacy databases (safe no-op if already present).
+ */
+function ensureUsersBarberIdColumn() {
+    global $conn;
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $ensured = true;
+    $t = @$conn->query("SHOW TABLES LIKE 'users'");
+    if (!$t || $t->num_rows === 0) {
+        return;
+    }
+    if (usersTableHasBarberIdColumn()) {
+        return;
+    }
+    @$conn->query("ALTER TABLE users ADD COLUMN barber_id INT NULL DEFAULT NULL AFTER role");
+}
+
+/**
+ * Set users.barber_id for barber-role rows where full_name matches barbers.name (case-insensitive).
+ */
+function syncBarberUsersToProfiles() {
+    global $conn;
+    if (!usersTableHasBarberIdColumn()) {
+        return;
+    }
+    $bt = @$conn->query("SHOW TABLES LIKE 'barbers'");
+    if (!$bt || $bt->num_rows === 0) {
+        return;
+    }
+    $conn->query(
+        "UPDATE users u INNER JOIN barbers b ON LOWER(TRIM(u.full_name)) = LOWER(TRIM(b.name)) SET u.barber_id = b.id " .
+        "WHERE u.role = 'barber' AND (u.barber_id IS NULL OR u.barber_id = 0) AND TRIM(COALESCE(u.full_name,'')) <> ''"
+    );
+}
+
+/**
+ * Whether barbers table has user_id (links roster row to users.id for barber-role logins).
+ */
+function barbersTableHasUserIdColumn() {
+    global $conn;
+    $r = @$conn->query("SHOW COLUMNS FROM barbers LIKE 'user_id'");
+    return ($r && $r->num_rows > 0);
+}
+
+/**
+ * Add barbers.user_id on legacy databases.
+ */
+function ensureBarbersUserIdColumn() {
+    global $conn;
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $ensured = true;
+    $t = @$conn->query("SHOW TABLES LIKE 'barbers'");
+    if (!$t || $t->num_rows === 0) {
+        return;
+    }
+    if (barbersTableHasUserIdColumn()) {
+        return;
+    }
+    @$conn->query("ALTER TABLE barbers ADD COLUMN user_id INT NULL DEFAULT NULL AFTER id");
+}
+
+/**
+ * Point barbers.user_id at the barber-role user with the same display name (case-insensitive).
+ */
+function syncBarbersUserIdFromUsers() {
+    global $conn;
+    if (!barbersTableHasUserIdColumn()) {
+        return;
+    }
+    $ut = @$conn->query("SHOW TABLES LIKE 'users'");
+    if (!$ut || $ut->num_rows === 0) {
+        return;
+    }
+    $conn->query(
+        "UPDATE barbers b INNER JOIN users u ON u.role = 'barber' " .
+        "AND LENGTH(TRIM(COALESCE(u.full_name,''))) > 0 " .
+        "AND LOWER(TRIM(b.name)) = LOWER(TRIM(u.full_name)) " .
+        "SET b.user_id = u.id WHERE b.user_id IS NULL OR b.user_id = 0"
+    );
+}
+
+/**
+ * Fill users.barber_id when barbers.user_id already points at that user.
+ */
+function syncUsersBarberIdFromBarbersUserId() {
+    global $conn;
+    if (!usersTableHasBarberIdColumn() || !barbersTableHasUserIdColumn()) {
+        return;
+    }
+    $conn->query(
+        "UPDATE users u INNER JOIN barbers b ON b.user_id = u.id AND u.role = 'barber' " .
+        "SET u.barber_id = b.id WHERE u.barber_id IS NULL OR u.barber_id = 0 OR u.barber_id <> b.id"
+    );
+}
+
+/**
+ * Resolve barbers.id from a display name (case-insensitive trim match).
+ */
+function resolveBarberIdFromFullName($full_name) {
+    global $conn;
+    $fn = trim((string) $full_name);
+    if ($fn === '') {
+        return null;
+    }
+    $stmt = $conn->prepare('SELECT id FROM barbers WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1');
+    if (!$stmt) {
+        return null;
+    }
+    $stmt->bind_param('s', $fn);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $id = null;
+    if ($res && $res->num_rows > 0) {
+        $id = (int) $res->fetch_assoc()['id'];
+    }
+    $stmt->close();
+    return $id;
+}
+
+/**
+ * All barbers.id rows this logged-in barber user may manage (roster match via user_id, users.barber_id, or name).
+ *
+ * @return int[]
+ */
+function getBarberIdsForCurrentUser() {
+    global $conn;
+    if (!isBarber()) {
+        return [];
+    }
+    $uid = (int) $_SESSION['user_id'];
+    $ids = [];
+
+    if (barbersTableHasUserIdColumn()) {
+        $r = $conn->query('SELECT id FROM barbers WHERE user_id = ' . $uid);
+        if ($r) {
+            while ($row = $r->fetch_assoc()) {
+                $ids[] = (int) $row['id'];
+            }
+        }
+    }
+
+    if (usersTableHasBarberIdColumn()) {
+        $res = $conn->query('SELECT barber_id, full_name FROM users WHERE id = ' . $uid);
+        if ($res && $res->num_rows > 0) {
+            $row = $res->fetch_assoc();
+            if (!empty($row['barber_id'])) {
+                $ids[] = (int) $row['barber_id'];
+            }
+            // Name match only when nothing linked yet (role-based user → roster row).
+            if (empty($ids)) {
+                $bid = resolveBarberIdFromFullName($row['full_name'] ?? '');
+                if ($bid) {
+                    $ids[] = $bid;
+                    $conn->query('UPDATE users SET barber_id = ' . (int) $bid . ' WHERE id = ' . $uid);
+                }
+            }
+        }
+    } else {
+        $bid = resolveBarberIdFromFullName($_SESSION['full_name'] ?? '');
+        if ($bid) {
+            $ids[] = $bid;
+        }
+    }
+
+    return array_values(array_unique(array_filter($ids)));
+}
+
+/**
+ * Primary barbers.id for the logged-in barber (first match), or null.
+ */
+function getBarberIdForCurrentUser() {
+    $ids = getBarberIdsForCurrentUser();
+    return $ids[0] ?? null;
+}
+
+/**
+ * Default landing URL after login (or when already authenticated).
+ */
+function getPostLoginDashboardUrl() {
+    if (!isLoggedIn()) {
+        return 'index.php';
+    }
+    if (isAdmin()) {
+        return 'admin/dashboard.php';
+    }
+    if (isBarber()) {
+        return 'barber/dashboard.php';
+    }
+    return 'dashboard.php';
 }
 
 // Get current user
@@ -211,8 +423,129 @@ function getUserAppointments($user_id) {
     return $appointments;
 }
 
+/**
+ * Barber roster fields stored on users (admin manages barbers via users.role = barber).
+ */
+function ensureUserBarberProfileColumns() {
+    global $conn;
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    $t = @$conn->query("SHOW TABLES LIKE 'users'");
+    if (!$t || $t->num_rows === 0) {
+        return;
+    }
+    $add = [
+        'photo_url' => 'VARCHAR(255) NULL DEFAULT NULL',
+        'barber_title' => 'VARCHAR(100) NULL DEFAULT NULL',
+        'specialties' => 'TEXT NULL',
+        'bio' => 'TEXT NULL',
+        'rating' => 'DECIMAL(3,2) DEFAULT 5.0',
+        'experience_years' => 'INT DEFAULT 0',
+    ];
+    foreach ($add as $col => $def) {
+        $colEsc = $conn->real_escape_string($col);
+        $c = @$conn->query("SHOW COLUMNS FROM users LIKE '$colEsc'");
+        if ($c && $c->num_rows === 0) {
+            @$conn->query("ALTER TABLE users ADD COLUMN `$col` $def");
+        }
+    }
+}
+
+/**
+ * Upsert `barbers` row from a barber-role user so booking (appointments.barber_id) and public pages stay in sync.
+ */
+function syncBarbersTableFromBarberUser($userId) {
+    global $conn;
+    $userId = (int) $userId;
+    if ($userId <= 0) {
+        return false;
+    }
+    $res = $conn->query("SELECT * FROM users WHERE id = $userId AND role = 'barber' LIMIT 1");
+    if (!$res || $res->num_rows === 0) {
+        return false;
+    }
+    $u = $res->fetch_assoc();
+    $disp = trim((string) ($u['full_name'] ?? ''));
+    if ($disp === '') {
+        $disp = trim((string) ($u['username'] ?? ''));
+    }
+    $name = $conn->real_escape_string($disp);
+    $title = $conn->real_escape_string(trim((string) ($u['barber_title'] ?? '')));
+    $spec = $conn->real_escape_string(trim((string) ($u['specialties'] ?? '')));
+    $bio = $conn->real_escape_string(trim((string) ($u['bio'] ?? '')));
+    $photo = $conn->real_escape_string(trim((string) ($u['photo_url'] ?? '')));
+    $rating = floatval($u['rating'] ?? 5);
+    if ($rating < 0) {
+        $rating = 0;
+    }
+    if ($rating > 5) {
+        $rating = 5;
+    }
+    $exp = (int) ($u['experience_years'] ?? 0);
+
+    $bid = isset($u['barber_id']) ? (int) $u['barber_id'] : 0;
+    if ($bid > 0) {
+        $conn->query(
+            "UPDATE barbers SET user_id = $userId, name = '$name', title = '$title', specialties = '$spec', bio = '$bio', " .
+            "rating = $rating, experience_years = $exp, photo_url = '$photo' WHERE id = $bid"
+        );
+        return true;
+    }
+    $chk = $conn->query("SELECT id FROM barbers WHERE user_id = $userId LIMIT 1");
+    if ($chk && $chk->num_rows > 0) {
+        $bid = (int) $chk->fetch_assoc()['id'];
+        $conn->query(
+            "UPDATE barbers SET name = '$name', title = '$title', specialties = '$spec', bio = '$bio', " .
+            "rating = $rating, experience_years = $exp, photo_url = '$photo' WHERE id = $bid"
+        );
+        $conn->query("UPDATE users SET barber_id = $bid WHERE id = $userId");
+        return true;
+    }
+    if (!$conn->query(
+        "INSERT INTO barbers (user_id, name, title, specialties, rating, experience_years, photo_url, bio) " .
+        "VALUES ($userId, '$name', '$title', '$spec', $rating, $exp, '$photo', '$bio')"
+    )) {
+        return false;
+    }
+    $newId = (int) $conn->insert_id;
+    $conn->query("UPDATE users SET barber_id = $newId WHERE id = $userId");
+    return true;
+}
+
+/**
+ * Resolve `barbers.id` (chair) for a barber user id.
+ */
+function getChairBarberIdForUserId($userId) {
+    global $conn;
+    $userId = (int) $userId;
+    if ($userId <= 0) {
+        return 0;
+    }
+    $r = $conn->query("SELECT barber_id FROM users WHERE id = $userId LIMIT 1");
+    if ($r && $r->num_rows > 0) {
+        $bid = (int) ($r->fetch_assoc()['barber_id'] ?? 0);
+        if ($bid > 0) {
+            return $bid;
+        }
+    }
+    $r2 = $conn->query("SELECT id FROM barbers WHERE user_id = $userId LIMIT 1");
+    if ($r2 && $r2->num_rows > 0) {
+        return (int) $r2->fetch_assoc()['id'];
+    }
+    return 0;
+}
+
 // Initialize database on app start
 createUsersTable();
+ensureUsersBarberIdColumn();
+ensureUserBarberProfileColumns();
+ensureBarbersUserIdColumn();
+syncBarbersUserIdFromUsers();
+syncBarberUsersToProfiles();
+syncUsersBarberIdFromBarbersUserId();
 
 // Global logout handler for non-API pages that post `action=logout`.
 $script_name = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');

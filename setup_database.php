@@ -43,6 +43,13 @@ CREATE TABLE IF NOT EXISTS `users` (
   `full_name` VARCHAR(100),
   `phone` VARCHAR(20),
   `role` ENUM('customer', 'barber', 'admin') DEFAULT 'customer',
+  `barber_id` INT NULL DEFAULT NULL,
+  `photo_url` VARCHAR(255) NULL DEFAULT NULL,
+  `barber_title` VARCHAR(100) NULL DEFAULT NULL,
+  `specialties` TEXT NULL,
+  `bio` TEXT NULL,
+  `rating` DECIMAL(3,2) DEFAULT 5.0,
+  `experience_years` INT DEFAULT 0,
   `is_active` BOOLEAN DEFAULT TRUE,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -54,6 +61,7 @@ executeQuery($sql_users, "Users table created");
 $sql_barbers = "
 CREATE TABLE IF NOT EXISTS `barbers` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `user_id` INT NULL DEFAULT NULL,
   `name` VARCHAR(100) NOT NULL,
   `title` VARCHAR(100),
   `specialties` TEXT,

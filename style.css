@@ -807,7 +807,7 @@ header {
 .cta-stats {
   display: flex;
   justify-content: center;
-  gap: 0;
+  gap: 0w;
   border-top: 1px solid rgba(255,255,255,0.2);
   padding-top: 40px;
 }

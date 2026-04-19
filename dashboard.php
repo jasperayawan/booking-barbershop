@@ -13,6 +13,12 @@ if (isAdmin()) {
     exit;
 }
 
+// Barbers use the barber workspace, not the customer appointment list
+if (isBarber()) {
+    header('Location: barber/dashboard.php');
+    exit;
+}
+
 $user = getCurrentUser();
 
 // Get user's appointments

@@ -15,12 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = loginUser($email, $password);
         
         if ($result['success']) {
-            // Redirect based on user role
-            if (isAdmin()) {
-                header('Location: admin/dashboard.php');
-            } else {
-                header('Location: dashboard.php');
-            }
+            header('Location: ' . getPostLoginDashboardUrl());
             exit;
         } else {
             $error = $result['message'];
@@ -30,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Redirect if already logged in
 if (isLoggedIn()) {
-    header('Location: index.php');
+    header('Location: ' . getPostLoginDashboardUrl());
     exit;
 }
 ?>

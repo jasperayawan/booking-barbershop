@@ -14,7 +14,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$barbersResult = $conn->query("SELECT * FROM barbers ORDER BY name LIMIT 4");
+$barbers = $conn->query("
+  SELECT u.id, u.username, u.email, u.full_name AS name, u.barber_title AS title, u.specialties, u.rating, u.experience_years, u.photo_url, u.barber_id
+  FROM users u 
+  WHERE u.role = 'barber'
+  ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username)
+");
 
 ?>
 <!DOCTYPE html>
@@ -45,6 +50,7 @@ $barbersResult = $conn->query("SELECT * FROM barbers ORDER BY name LIMIT 4");
         <li><a href="ourBarbers.php">Our Barbers</a></li>
         <li><a href="contact.php">Contact</a></li>
         <?php if (isLoggedIn()): ?>
+          <li><a href="<?php echo htmlspecialchars(getPostLoginDashboardUrl()); ?>">Dashboard</a></li>
           <li><a href="book.php">Book Now</a></li>
         <?php endif; ?>
       </ul>
@@ -81,6 +87,10 @@ $barbersResult = $conn->query("SELECT * FROM barbers ORDER BY name LIMIT 4");
       <a href="about.php">About</a>
       <a href="services.php">Services</a>
       <a href="contact.php">Contact</a>
+      <?php if (isLoggedIn()): ?>
+        <a href="<?php echo htmlspecialchars(getPostLoginDashboardUrl()); ?>">Dashboard</a>
+        <a href="book.php">Book Now</a>
+      <?php endif; ?>
       <div class="mobile-nav-cta">
         <?php if (isLoggedIn()): ?>
           <button onclick="logoutUser()" class="btn-signup">Logout</button>
@@ -267,8 +277,8 @@ $barbersResult = $conn->query("SELECT * FROM barbers ORDER BY name LIMIT 4");
           </div>
         
           <div class="team-grid">
-  <?php if (isset($barbersResult) && $barbersResult->num_rows > 0): ?>
-    <?php while ($barber = $barbersResult->fetch_assoc()): ?>
+  <?php if (isset($barbers) && $barbers->num_rows > 0): ?>
+    <?php while ($barber = $barbers->fetch_assoc()): ?>
       <article class="barber-card reveal">
         <div class="barber-img-wrap">
           <img src="<?php echo !empty($barber['photo_url']) ? $barber['photo_url'] : 'assets/default-barber.png'; ?>" 

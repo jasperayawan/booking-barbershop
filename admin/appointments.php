@@ -9,9 +9,11 @@ if (!isAdmin()) {
 
 // Get all appointments with barber and service details
 $result = $conn->query("
-  SELECT a.*, b.name as barber_name, s.name as service_name, s.price
+  SELECT a.id, a.customer_name, a.customer_phone, a.customer_email, 
+         a.appointment_date, a.appointment_time, a.status, a.barber_id, a.service_id,
+         u.full_name as barber_name, s.name as service_name
   FROM appointments a
-  JOIN barbers b ON a.barber_id = b.id
+  JOIN users u ON a.barber_id = u.id
   JOIN services s ON a.service_id = s.id
   ORDER BY a.appointment_date DESC
 ");
@@ -47,6 +49,7 @@ $services = $conn->query("SELECT id, name, duration_minutes, price FROM services
       </nav>
     </aside>
 
+    
     <!-- Main Content -->
     <div class="main-content">
       <!-- Top Bar -->
@@ -111,7 +114,11 @@ $services = $conn->query("SELECT id, name, duration_minutes, price FROM services
                 </thead>
                 <tbody>
                   <?php while ($apt = $result->fetch_assoc()): ?>
-                    <tr data-status="<?php echo $apt['status']; ?>" data-barber="<?php echo $apt['barber_id']; ?>">
+                    <tr data-status="<?php echo $apt['id']; ?>" data-status="<?php echo $apt['status']; ?>" 
+                        data-barber="<?php echo $apt['barber_id']; ?>"
+                        data-service="<?php echo $apt['service_id']; ?>"
+                        data-date="<?php echo $apt['appointment_date']; ?>"
+                        data-time="<?php echo $apt['appointment_time']; ?>">
                       <td><strong><?php echo htmlspecialchars($apt['customer_name']); ?></strong></td>
                       <td>
                         <small><?php echo htmlspecialchars($apt['customer_phone']); ?></small><br>
@@ -261,23 +268,145 @@ $services = $conn->query("SELECT id, name, duration_minutes, price FROM services
 
     // Edit appointment
     document.querySelectorAll('.edit-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const row = this.closest('tr');
-        const id = this.dataset.id;
-        // TODO: Load appointment data and populate form
-        modal.classList.add('active');
-      });
+        btn.addEventListener('click', function() {
+            const row = this.closest('tr');
+            const id = this.dataset.id;
+
+            // 1. Get data from the table cells (prose/text)
+            const name = row.querySelector('td:nth-child(1) strong').textContent;
+            const phone = row.querySelector('td:nth-child(2) small:nth-child(1)').textContent;
+            const email = row.querySelector('td:nth-child(2) small:nth-child(3)') ? 
+                          row.querySelector('td:nth-child(2) small:nth-child(3)').textContent : '';
+
+            // 2. Get data from the <tr> attributes (IDs and raw values)
+            const barberId = row.dataset.barber;
+            const serviceId = row.dataset.service; // New
+            const date = row.dataset.date;       // New
+            const time = row.dataset.time;       // New
+            const status = row.dataset.status;
+
+            // 3. Populate the Modal Fields
+            document.getElementById('appointmentId').value = id;
+            document.getElementById('customerName').value = name;
+            document.getElementById('customerPhone').value = phone;
+            document.getElementById('customerEmail').value = email;
+            
+            // Populate Select Dropdowns
+            document.getElementById('barberId').value = barberId;
+            document.getElementById('serviceId').value = serviceId; // Now this will work
+            document.getElementById('appointmentStatus').value = status;
+
+            // Populate Date and Time
+            document.getElementById('appointmentDate').value = date; // Must be YYYY-MM-DD
+            document.getElementById('appointmentTime').value = time; // Must be HH:MM:SS
+
+            // Update UI
+            document.querySelector('.modal-title').textContent = 'Edit Appointment';
+            modal.classList.add('active');
+        });
     });
 
-    // Delete appointment
-    document.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        if (confirm('Are you sure?')) {
-          const id = this.dataset.id;
-          // TODO: Delete appointment via API
-        }
-      });
+    // --- 1. POPULATE MODAL FROM TABLE (Your Preferred Way) ---
+document.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const row = this.closest('tr');
+        
+        // Pull data from the data attributes you added to the <tr>
+        const id = this.dataset.id;
+        const barberId = row.dataset.barber;
+        const serviceId = row.dataset.service;
+        const date = row.dataset.date;
+        const time = row.dataset.time;
+        const status = row.dataset.status;
+
+        // Pull text from table cells
+        const name = row.querySelector('td:nth-child(1) strong').textContent;
+        const phone = row.querySelector('td:nth-child(2) small:nth-child(1)').textContent;
+        const emailElem = row.querySelector('td:nth-child(2) small:nth-child(3)');
+        const email = emailElem ? emailElem.textContent : '';
+
+        // Fill the Modal inputs
+        document.getElementById('appointmentId').value = id;
+        document.getElementById('customerName').value = name;
+        document.getElementById('customerPhone').value = phone;
+        document.getElementById('customerEmail').value = email;
+        document.getElementById('barberId').value = barberId;
+        document.getElementById('serviceId').value = serviceId;
+        document.getElementById('appointmentStatus').value = status;
+        document.getElementById('appointmentDate').value = date;
+        document.getElementById('appointmentTime').value = time;
+
+        // Change title and show modal
+        document.querySelector('.modal-title').textContent = 'Edit Appointment';
+        modal.classList.add('active');
     });
+});
+
+
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // Collect the data currently in the modal inputs
+    const formData = new FormData();
+    formData.append('action', 'update-appointment'); // Triggers your PHP elseif
+    formData.append('id', document.getElementById('appointmentId').value);
+    formData.append('customer_name', document.getElementById('customerName').value);
+    formData.append('customer_phone', document.getElementById('customerPhone').value);
+    formData.append('customer_email', document.getElementById('customerEmail').value);
+    formData.append('barber_id', document.getElementById('barberId').value);
+    formData.append('service_id', document.getElementById('serviceId').value);
+    formData.append('appointment_date', document.getElementById('appointmentDate').value);
+    formData.append('appointment_time', document.getElementById('appointmentTime').value);
+    formData.append('status', document.getElementById('appointmentStatus').value);
+    formData.append('notes', document.getElementById('appointmentNotes').value);
+
+    try {
+        const response = await fetch('../api/appointments.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('Appointment updated successfully!');
+            location.reload(); // Refresh table to see changes
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to connect to the server.');
+    }
+});
+
+    // Delete appointment
+    document.addEventListener('click', async function(e) {
+      const deleteBtn = e.target.closest('.delete-btn');
+
+      if(deleteBtn){
+        const appointmentId = deleteBtn.getAttribute('data-id');
+
+        if(confirm('Are you sure want you to delete this appointment?')) {
+          try{
+            const formData = new FormData();
+            formData.append('action', 'delete-appointment');
+            formData.append('id', appointmentId);
+
+            const response = await fetch('../api/appointments.php', {
+              method: 'POST',
+              body: formData
+            })
+
+            const result = await response.json();
+            alert(result.message)
+            location.reload();
+          } catch (error) {
+            console.error('Error:', error)
+          }
+        }
+      }
+    })
 
     // Filter table
     statusFilter.addEventListener('change', filterTable);

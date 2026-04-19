@@ -7,14 +7,7 @@ if (!isLoggedIn()) {
     exit;
 }
 
-// Get barbers and services for the booking form
-$barbers = [];
-$barbersResult = $conn->query("SELECT id, name, title FROM barbers ORDER BY name");
-if ($barbersResult && $barbersResult->num_rows > 0) {
-    while ($barber = $barbersResult->fetch_assoc()) {
-        $barbers[] = $barber;
-    }
-}
+// Get barbers and services for the booking for
 
 $services = [];
 $servicesResult = $conn->query("SELECT id, name, price, duration_minutes FROM services ORDER BY name");
@@ -74,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $result = bookAppointment($customer_name, $customer_phone, $customer_email, $barber_id, $service_id, $appointment_date, $appointment_time);
 
                 if ($result['success']) {
-                    header('Location: dashboard.php');
+                    header('Location: ' . getPostLoginDashboardUrl());
                     exit;
                 } else {
                     $message = $result['message'];
@@ -84,6 +77,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+
+$barbers = $conn->query("
+  SELECT u.id, u.username, u.email, u.full_name AS name, u.barber_title AS title, u.specialties, u.rating, u.experience_years, u.photo_url, u.barber_id
+  FROM users u
+  WHERE u.role = 'barber'
+  ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username)
+");
+
+
 ?>
 <!DOCTYPE html>
 <html lang="en">

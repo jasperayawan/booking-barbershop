@@ -88,7 +88,7 @@ function getUsers() {
     $count_stmt->close();
     
     // Get paginated users
-    $query = "SELECT id, username, email, full_name, phone, role, is_active, created_at 
+    $query = "SELECT id, username, email, full_name, phone, role, barber_id, is_active, created_at 
               FROM users {$where}
               ORDER BY created_at DESC
               LIMIT ? OFFSET ?";
@@ -131,6 +131,7 @@ function createUserAdmin() {
     $full_name = trim($_REQUEST['full_name'] ?? '');
     $phone = trim($_REQUEST['phone'] ?? '');
     $role = $_REQUEST['role'] ?? 'customer';
+    $barber_id = intval($_REQUEST['barber_id'] ?? 0);
     
     // Validate
     if (empty($username) || empty($email) || empty($password)) {
@@ -172,6 +173,12 @@ function createUserAdmin() {
     
     if ($insert->execute()) {
         $user_id = $insert->insert_id;
+        if ($role === 'barber' && $barber_id > 0 && usersTableHasBarberIdColumn()) {
+            $ub = $conn->prepare('UPDATE users SET barber_id = ? WHERE id = ?');
+            $ub->bind_param('ii', $barber_id, $user_id);
+            $ub->execute();
+            $ub->close();
+        }
         echo json_encode([
             'success' => true,
             'message' => 'User created successfully',
@@ -183,6 +190,7 @@ function createUserAdmin() {
                 'full_name' => $full_name,
                 'phone' => $phone,
                 'role' => $role,
+                'barber_id' => ($role === 'barber' && $barber_id > 0) ? $barber_id : null,
                 'is_active' => true
             ]
         ]);
@@ -237,6 +245,17 @@ function updateUser() {
         $updates[] = "role = ?";
         $bind_params[] = $role;
         $bind_types .= 's';
+    }
+    
+    if (usersTableHasBarberIdColumn() && array_key_exists('barber_id', $_REQUEST)) {
+        $bid = $_REQUEST['barber_id'];
+        if ($bid === '' || $bid === null) {
+            $updates[] = 'barber_id = NULL';
+        } else {
+            $updates[] = 'barber_id = ?';
+            $bind_params[] = (int) $bid;
+            $bind_types .= 'i';
+        }
     }
     
     if ($is_active !== null) {
@@ -341,7 +360,7 @@ function getUser() {
     }
     
     $stmt = $conn->prepare("
-        SELECT id, username, email, full_name, phone, role, is_active, created_at, updated_at
+        SELECT id, username, email, full_name, phone, role, barber_id, is_active, created_at, updated_at
         FROM users
         WHERE id = ?
     ");
