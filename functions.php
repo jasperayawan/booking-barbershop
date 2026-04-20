@@ -508,6 +508,7 @@ function ensureUserBarberProfileColumns() {
         'bio' => 'TEXT NULL',
         'rating' => 'DECIMAL(3,2) DEFAULT 5.0',
         'experience_years' => 'INT DEFAULT 0',
+        'availability_json' => 'TEXT NULL',
     ];
     foreach ($add as $col => $def) {
         $colEsc = $conn->real_escape_string($col);
