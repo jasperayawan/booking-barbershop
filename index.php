@@ -14,9 +14,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Fetch all barbers by user role only from users table
 $barbers = $conn->query("
-  SELECT u.id, u.username, u.email, u.full_name AS name, u.barber_title AS title, u.specialties, u.rating, u.experience_years, u.photo_url, u.barber_id
-  FROM users u 
+  SELECT
+    u.id AS id,
+    u.username,
+    u.email,
+    u.full_name AS name,
+    u.barber_title AS title,
+    u.specialties AS specialties,
+    COALESCE(u.rating, 0) AS rating,
+    COALESCE(u.experience_years, 0) AS experience_years,
+    COALESCE(NULLIF(TRIM(u.photo_url), ''), 'assets/default-barber.png') AS photo_url,
+    u.barber_id
+  FROM users u
   WHERE u.role = 'barber'
   ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username)
 ");

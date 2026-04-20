@@ -1,9 +1,23 @@
 <?php
 require_once 'functions.php';
 
-// Fetch barbers from database
+// Fetch barbers by user role only from users table
 $barbers = [];
-$barbersResult = $conn->query("SELECT * FROM barbers ORDER BY name");
+$barbersResult = $conn->query("
+  SELECT
+    u.id AS id,
+    u.username,
+    u.full_name AS full_name,
+    u.full_name AS name,
+    u.barber_title AS title,
+    u.specialties AS specialties,
+    COALESCE(u.rating, 0) AS rating,
+    COALESCE(u.experience_years, 0) AS experience_years,
+    COALESCE(NULLIF(TRIM(u.photo_url), ''), 'assets/default-avatar.png') AS photo_url
+  FROM users u
+  WHERE u.role = 'barber'
+  ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username)
+");
 if ($barbersResult && $barbersResult->num_rows > 0) {
     while ($barber = $barbersResult->fetch_assoc()) {
         $barbers[] = $barber;
