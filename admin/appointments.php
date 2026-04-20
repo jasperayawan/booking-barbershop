@@ -9,9 +9,19 @@ if (!isAdmin()) {
 
 // Get all appointments with barber and service details
 $result = $conn->query("
-  SELECT a.id, a.customer_name, a.customer_phone, a.customer_email, 
-         a.appointment_date, a.appointment_time, a.status, a.barber_id, a.service_id,
-         u.full_name as barber_name, s.name as service_name
+  SELECT 
+    a.id, 
+    a.customer_name, 
+    a.customer_phone, 
+    a.customer_email, 
+    a.appointment_date, 
+    a.appointment_time, 
+    a.status, 
+    a.barber_id, 
+    a.service_id,
+    u.full_name as barber_name, 
+    s.name as service_name,
+    s.price           -- <--- ADD THIS LINE
   FROM appointments a
   JOIN users u ON a.barber_id = u.id
   JOIN services s ON a.service_id = s.id
@@ -19,7 +29,7 @@ $result = $conn->query("
 ");
 
 // Get barbers and services for dropdowns
-$barbers = $conn->query("SELECT id, name FROM barbers ORDER BY name");
+$barbers = $conn->query("SELECT id, full_name as name FROM users WHERE role = 'barber' ORDER BY full_name");
 $services = $conn->query("SELECT id, name, duration_minutes, price FROM services ORDER BY name");
 ?>
 <!DOCTYPE html>
@@ -257,6 +267,7 @@ $services = $conn->query("SELECT id, name, duration_minutes, price FROM services
     const statusFilter = document.getElementById('statusFilter');
     const barberFilter = document.getElementById('barberFilter');
     const table = document.getElementById('appointmentsTable');
+    const appointmentIdInput = document.getElementById('appointmentId');
 
     // Open modal for new appointment
     newBtn.addEventListener('click', () => {
@@ -306,6 +317,46 @@ $services = $conn->query("SELECT id, name, duration_minutes, price FROM services
         });
     });
 
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const id = appointmentIdInput.value;
+        const formData = new FormData(form);
+          
+
+        formData.append('action', id ? 'update-appointment' : 'create-appointment');
+        if (id) formData.append('id', id);
+
+      
+        formData.append('customer_name', document.getElementById('customerName').value);
+        formData.append('customer_phone', document.getElementById('customerPhone').value);
+        formData.append('customer_email', document.getElementById('customerEmail').value);
+        formData.append('barber_id', document.getElementById('barberId').value);
+        formData.append('service_id', document.getElementById('serviceId').value);
+        formData.append('appointment_date', document.getElementById('appointmentDate').value);
+        formData.append('appointment_time', document.getElementById('appointmentTime').value);
+        formData.append('status', document.getElementById('appointmentStatus').value);
+        formData.append('notes', document.getElementById('appointmentNotes').value);
+
+        try {
+            const response = await fetch('../api/appointments.php', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                alert(id ? 'Appointment updated!' : 'Appointment created!');
+                location.reload();
+            } else {
+                alert('Error: ' + result.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to connect to the server.');
+        }
+    });
+
     // --- 1. POPULATE MODAL FROM TABLE (Your Preferred Way) ---
 document.querySelectorAll('.edit-btn').forEach(btn => {
     btn.addEventListener('click', function() {
@@ -342,43 +393,6 @@ document.querySelectorAll('.edit-btn').forEach(btn => {
     });
 });
 
-
-form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    // Collect the data currently in the modal inputs
-    const formData = new FormData();
-    formData.append('action', 'update-appointment'); // Triggers your PHP elseif
-    formData.append('id', document.getElementById('appointmentId').value);
-    formData.append('customer_name', document.getElementById('customerName').value);
-    formData.append('customer_phone', document.getElementById('customerPhone').value);
-    formData.append('customer_email', document.getElementById('customerEmail').value);
-    formData.append('barber_id', document.getElementById('barberId').value);
-    formData.append('service_id', document.getElementById('serviceId').value);
-    formData.append('appointment_date', document.getElementById('appointmentDate').value);
-    formData.append('appointment_time', document.getElementById('appointmentTime').value);
-    formData.append('status', document.getElementById('appointmentStatus').value);
-    formData.append('notes', document.getElementById('appointmentNotes').value);
-
-    try {
-        const response = await fetch('../api/appointments.php', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            alert('Appointment updated successfully!');
-            location.reload(); // Refresh table to see changes
-        } else {
-            alert('Error: ' + result.message);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Failed to connect to the server.');
-    }
-});
 
     // Delete appointment
     document.addEventListener('click', async function(e) {

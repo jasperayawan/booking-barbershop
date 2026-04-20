@@ -115,47 +115,83 @@ if ($method === 'GET') {
     if ($action === 'get-availability') {
         $barber_id = (int) ($_GET['barber_id'] ?? 0);
         $date = $_GET['date'] ?? '';
-
+    
         if (!$barber_id || !$date) {
             echo json_encode(['success' => false, 'message' => 'Missing barber_id or date']);
             exit;
         }
-
-        $day_of_week = date('l', strtotime($date));
-
-        $availability_check = $conn->query("
-            SELECT start_time, end_time FROM barber_availability
-            WHERE barber_id = $barber_id
-            AND day_of_week = '" . $conn->real_escape_string($day_of_week) . "'
-            AND is_available = TRUE
-        ");
-
-        if (!$availability_check || $availability_check->num_rows === 0) {
-            echo json_encode(['success' => false, 'message' => 'Barber not available on this day']);
+    
+        $day_of_week = date('l', strtotime($date)); // e.g., "Wednesday"
+    
+        // 1. Fetch the JSON
+        $user_query = $conn->query("SELECT availability_json FROM users WHERE id = $barber_id AND role = 'barber'");
+        $user = $user_query->fetch_assoc();
+    
+        if (!$user || empty($user['availability_json'])) {
+            echo json_encode(['success' => false, 'message' => 'Barber not found or no availability set']);
             exit;
         }
-
+    
+        // 2. Decode and NORMALIZE
+        $availability = json_decode($user['availability_json'], true);
+        
+        // Normalize keys to lowercase (e.g., "monday", "tuesday")
+        $availability_lower = array_change_key_case($availability, CASE_LOWER);
+        $search_key = strtolower(trim($day_of_week));
+    
+        // Check if the key exists in our normalized array
+        if (!isset($availability_lower[$search_key])) {
+            // DEBUG MESSAGE INCLUDED
+            $present_keys = implode(', ', array_keys($availability));
+            echo json_encode([
+                'success' => false, 
+                'message' => "Barber has no schedule set for $day_of_week. [Keys found: $present_keys]"
+            ]);
+            exit;
+        }
+    
+        $day_settings = $availability_lower[$search_key];
+    
+        // Check availability (handle 1, "1", or true)
+        if ((int)($day_settings['is_available'] ?? 0) !== 1) {
+            echo json_encode([
+                'success' => false, 
+                'message' => 'Barber is marked as away on ' . $day_of_week
+            ]);
+            exit;
+        }
+    
+        $work_start = $day_settings['start_time'] ?? '09:00';
+        $work_end = $day_settings['end_time'] ?? '19:00';
+    
+        // 3. Fetch already booked slots
         $booked_slots = [];
+        $escaped_date = $conn->real_escape_string($date);
         $bookings = $conn->query("
             SELECT appointment_time FROM appointments
             WHERE barber_id = $barber_id
-            AND appointment_date = '" . $conn->real_escape_string($date) . "'
+            AND appointment_date = '$escaped_date'
             AND status IN ('pending', 'confirmed')
         ");
+    
         if ($bookings) {
             while ($booking = $bookings->fetch_assoc()) {
-                $booked_slots[] = $booking['appointment_time'];
+                $booked_slots[] = date('H:i', strtotime($booking['appointment_time']));
             }
         }
-
+    
         echo json_encode([
             'success' => true,
             'booked_slots' => $booked_slots,
-            'available_slots' => [],
+            'working_hours' => [
+                'start' => $work_start,
+                'end' => $work_end
+            ]
         ]);
         exit;
     }
 
+    
     $result = $conn->query('SELECT * FROM barbers ORDER BY name');
     $barbers = [];
     if ($result && $result->num_rows > 0) {

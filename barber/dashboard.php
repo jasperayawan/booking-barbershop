@@ -23,15 +23,29 @@ $barber_name = '';
 $appointments = null;
 if (!empty($barberIds)) {
     $idsCsv = implode(',', array_map('intval', $barberIds));
+    // Also include user ID for appointments stored with users.id
+    $userIdStr = intval($user['id']);
+    
     $bn = $conn->query('SELECT name FROM barbers WHERE id IN (' . $idsCsv . ') ORDER BY id LIMIT 1');
     if ($bn && $bn->num_rows > 0) {
         $barber_name = $bn->fetch_assoc()['name'];
     }
+    // Use LEFT JOIN and flexible matching to handle appointments stored with either barbers.id or users.id
     $appointments = $conn->query('
         SELECT a.*, s.name AS service_name, s.price
         FROM appointments a
-        JOIN services s ON a.service_id = s.id
-        WHERE a.barber_id IN (' . $idsCsv . ')
+        LEFT JOIN services s ON a.service_id = s.id
+        WHERE a.barber_id IN (' . $idsCsv . ') OR a.barber_id = ' . $userIdStr . '
+        ORDER BY a.appointment_date DESC, a.appointment_time DESC
+    ');
+} else {
+    // Fallback: show appointments for current user by ID
+    $userIdStr = intval($user['id']);
+    $appointments = $conn->query('
+        SELECT a.*, s.name AS service_name, s.price
+        FROM appointments a
+        LEFT JOIN services s ON a.service_id = s.id
+        WHERE a.barber_id = ' . $userIdStr . '
         ORDER BY a.appointment_date DESC, a.appointment_time DESC
     ');
 }

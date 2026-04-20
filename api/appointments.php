@@ -23,6 +23,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        // Check if barber available on the day and time
+        $day_of_week = date('l', strtotime($appointment_date));
+        
+        // Fetch the JSON directly for this specific barber
+        // barber_id could be users.id or barbers.id
+        $stmt = $conn->prepare("
+            SELECT u.availability_json 
+            FROM users u 
+            LEFT JOIN barbers b ON u.id = b.user_id 
+            WHERE (b.id = ? OR u.id = ?) AND u.role = 'barber'
+            LIMIT 1
+        ");
+        $stmt->bind_param("ii", $barber_id, $barber_id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        
+        $is_available = false;
+        if ($row && !empty($row['availability_json'])) {
+            $availability = json_decode($row['availability_json'], true);
+            
+            // Case-insensitive check for the day key
+            $availability = array_change_key_case($availability, CASE_LOWER);
+            $search_day = strtolower($day_of_week);
+            
+            if (isset($availability[$search_day])) {
+                $day_settings = $availability[$search_day];
+                // Check if marked as available (1 or true)
+                if (isset($day_settings['is_available']) && (int)$day_settings['is_available'] === 1) {
+                    $start_time = $day_settings['start_time'];
+                    $end_time = $day_settings['end_time'];
+                    // Check if appointment time is within hours
+                    if ($appointment_time >= $start_time && $appointment_time <= $end_time) {
+                        $is_available = true;
+                    }
+                }
+            }
+        }
+        
+        if (!$is_available) {
+            echo json_encode(['success' => false, 'message' => 'Barber not available at this time']);
+            exit;
+        }
+
+        // Get duration of the service
+        $service_stmt = $conn->prepare("SELECT duration_minutes FROM services WHERE id = ?");
+        $service_stmt->bind_param("i", $service_id);
+        $service_stmt->execute();
+        $service_row = $service_stmt->get_result()->fetch_assoc();
+        $duration_minutes = $service_row ? $service_row['duration_minutes'] : 30;
+        
+        // Calculate end time of new appointment
+        $new_start = strtotime($appointment_time);
+        $new_end = $new_start + ($duration_minutes * 60);
+        
+        // Check for overlapping appointments
+        $overlap_query = "
+            SELECT a.appointment_time, s.duration_minutes 
+            FROM appointments a 
+            JOIN services s ON a.service_id = s.id 
+            WHERE a.barber_id = ? 
+            AND a.appointment_date = ? 
+            AND a.status IN ('pending', 'confirmed')
+        ";
+        $overlap_stmt = $conn->prepare($overlap_query);
+        $overlap_stmt->bind_param("is", $barber_id, $appointment_date);
+        $overlap_stmt->execute();
+        $result = $overlap_stmt->get_result();
+        
+        $has_conflict = false;
+        while ($row = $result->fetch_assoc()) {
+            $existing_start = strtotime($row['appointment_time']);
+            $existing_end = $existing_start + ($row['duration_minutes'] * 60);
+            
+            // Check if times overlap
+            if ($new_start < $existing_end && $new_end > $existing_start) {
+                $has_conflict = true;
+                break;
+            }
+        }
+        
+        if ($has_conflict) {
+            echo json_encode(['success' => false, 'message' => 'This time slot conflicts with an existing appointment']);
+            exit;
+        }
+
         $query = "INSERT INTO appointments (customer_name, customer_phone, customer_email, barber_id, service_id, appointment_date, appointment_time, status, notes)
                   VALUES ('$customer_name', '$customer_phone', '$customer_email', $barber_id, $service_id, '$appointment_date', '$appointment_time', '$status', '$notes')";
 

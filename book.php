@@ -1,26 +1,29 @@
 <?php
 require_once 'functions.php';
 
-// Redirect to login if not logged in
 if (!isLoggedIn()) {
     header('Location: login.php');
     exit;
 }
 
-// Get barbers and services for the booking for
+// 1. Fetch all barbers for the dropdown and initial display
+$barbersQuery = $conn->query("
+    SELECT u.id as user_id, COALESCE(b.id, u.id) as barber_id, u.username, u.availability_json, u.full_name AS name, u.barber_title AS title, u.photo_url 
+    FROM users u 
+    LEFT JOIN barbers b ON u.id = b.user_id 
+    WHERE u.role = 'barber' 
+    ORDER BY u.full_name ASC
+");
+$barbers_list = $barbersQuery->fetch_all(MYSQLI_ASSOC);
 
-$services = [];
+// 2. Fetch services
 $servicesResult = $conn->query("SELECT id, name, price, duration_minutes FROM services ORDER BY name");
-if ($servicesResult && $servicesResult->num_rows > 0) {
-    while ($service = $servicesResult->fetch_assoc()) {
-        $services[] = $service;
-    }
-}
+$services = $servicesResult->fetch_all(MYSQLI_ASSOC);
 
-// Handle booking submission
 $message = '';
 $messageType = '';
 
+// 3. Handle the Booking Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $customer_name = trim($_POST['customer_name'] ?? '');
     $customer_phone = trim($_POST['customer_phone'] ?? '');
@@ -30,42 +33,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $appointment_date = $_POST['appointment_date'] ?? '';
     $appointment_time = $_POST['appointment_time'] ?? '';
 
-    // Validate required fields
     if (empty($customer_name) || empty($customer_phone) || empty($customer_email) || !$barber_id || !$service_id || empty($appointment_date) || empty($appointment_time)) {
         $message = 'All fields are required';
         $messageType = 'error';
     } else {
-        // Check if the selected time slot is available
-        $day_of_week = date('l', strtotime($appointment_date)); // Get day name (Monday, Tuesday, etc.)
-
-        // Check barber availability for this day
-        $availability_check = $conn->query("
-            SELECT id FROM barber_availability
-            WHERE barber_id = $barber_id
-            AND day_of_week = '$day_of_week'
-            AND is_available = TRUE
+        // --- UPDATED AVAILABILITY CHECK ---
+        $day_of_week = date('l', strtotime($appointment_date));
+        
+        // Fetch the JSON - barber_id could be users.id or barbers.id
+        // First try to find by barbers.id, then fallback to users.id
+        $stmt = $conn->prepare("
+            SELECT u.availability_json 
+            FROM users u 
+            LEFT JOIN barbers b ON u.id = b.user_id 
+            WHERE (b.id = ? OR u.id = ?) AND u.role = 'barber'
+            LIMIT 1
         ");
+        $stmt->bind_param("ii", $barber_id, $barber_id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
 
-        if ($availability_check->num_rows === 0) {
-            $message = 'Selected barber is not available on this day';
+        $is_available = false;
+        if ($row && !empty($row['availability_json'])) {
+            $availability = json_decode($row['availability_json'], true);
+            
+            // Case-insensitive check for the day key
+            $availability = array_change_key_case($availability, CASE_LOWER);
+            $search_day = strtolower($day_of_week);
+
+            if (isset($availability[$search_day])) {
+                $day_settings = $availability[$search_day];
+                // Check if marked as available (1 or true)
+                if (isset($day_settings['is_available']) && (int)$day_settings['is_available'] === 1) {
+                    $is_available = true;
+                }
+            }
+        }
+
+        if (!$is_available) {
+            $message = "Selected barber is not available on $day_of_week";
             $messageType = 'error';
         } else {
-            // Check if this specific time slot is already booked
-            $conflict_check = $conn->query("
-                SELECT id FROM appointments
-                WHERE barber_id = $barber_id
-                AND appointment_date = '$appointment_date'
-                AND appointment_time = '$appointment_time'
+            // Check for existing appointment conflict
+            $conflict_stmt = $conn->prepare("
+                SELECT id FROM appointments 
+                WHERE barber_id = ? 
+                AND appointment_date = ? 
+                AND appointment_time = ? 
                 AND status IN ('pending', 'confirmed')
             ");
-
-            if ($conflict_check->num_rows > 0) {
-                $message = 'This time slot is already booked. Please select a different time.';
+            $conflict_stmt->bind_param("iss", $barber_id, $appointment_date, $appointment_time);
+            $conflict_stmt->execute();
+            
+            if ($conflict_stmt->get_result()->num_rows > 0) {
+                $message = 'This time slot is already booked.';
                 $messageType = 'error';
             } else {
-                // Create the appointment
+                // Save the appointment
                 $result = bookAppointment($customer_name, $customer_phone, $customer_email, $barber_id, $service_id, $appointment_date, $appointment_time);
-
                 if ($result['success']) {
                     header('Location: ' . getPostLoginDashboardUrl());
                     exit;
@@ -77,17 +102,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-
-
-$barbers = $conn->query("
-  SELECT u.id, u.username, u.email, u.full_name AS name, u.barber_title AS title, u.specialties, u.rating, u.experience_years, u.photo_url, u.barber_id
-  FROM users u
-  WHERE u.role = 'barber'
-  ORDER BY COALESCE(NULLIF(TRIM(u.full_name), ''), u.username)
-");
-
-
 ?>
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -576,8 +593,8 @@ $barbers = $conn->query("
                         <label class="form-label">Select Barber *</label>
                         <select class="form-select" name="barber_id" id="barberSelect" required>
                             <option value="">Choose a barber</option>
-                            <?php foreach ($barbers as $barber): ?>
-                                <option value="<?php echo $barber['id']; ?>">
+                            <?php foreach ($barbers_list as $barber): ?>
+                                <option value="<?php echo $barber['barber_id']; ?>">
                                     <?php echo htmlspecialchars($barber['name'] . ' - ' . $barber['title']); ?>
                                 </option>
                             <?php endforeach; ?>
@@ -674,102 +691,141 @@ $barbers = $conn->query("
         const timeSlotGrid = document.getElementById('timeSlotGrid');
         const selectedTimeDisplay = document.getElementById('selectedTimeDisplay');
 
-        function fetchAvailability() {
-            const barberId = document.getElementById('barberSelect').value;
-            const selectedDate = document.getElementById('appointmentDate').value;
+        async function fetchAvailability() {
+    const barberId = document.getElementById('barberSelect').value;
+    const selectedDate = document.getElementById('appointmentDate').value;
+    const infoBox = document.getElementById('availabilityInfo');
 
-            if (!barberId || !selectedDate) {
-                document.getElementById('availabilityInfo').style.display = 'none';
-                return Promise.reject('Barber or date not selected');
-            }
+    if (!barberId || !selectedDate) {
+        infoBox.style.display = 'none';
+        return null;
+    }
 
-            document.getElementById('availabilityInfo').style.display = 'block';
+    infoBox.style.display = 'block';
 
-            return fetch(`/api/barbers.php?action=get-availability&barber_id=${barberId}&date=${selectedDate}`)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        bookedSlots = data.booked_slots || [];
-                        return bookedSlots;
-                    }
+    try {
+        const response = await fetch(`api/barbers.php?action=get-availability&barber_id=${barberId}&date=${selectedDate}`);
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const data = await response.json();
 
-                    document.getElementById('availabilityInfo').style.display = 'none';
-                    return [];
-                })
-                .catch(() => {
-                    document.getElementById('availabilityInfo').style.display = 'none';
-                    return [];
-                });
+        console.log('data barber:', data)
+
+        if (data.success) {
+            bookedSlots = data.booked_slots || [];
+            renderTimeSlots(data); 
+            console.log('gooooh')
+            return data; // Return the full object
+        } else {
+            // Handle "Barber not available on this day"
+            infoBox.innerHTML = `<span style="color: red;">${data.message}</span>`;
+            timeSlotGrid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #666;">${data.message}</p>`;
+            return null;
         }
+    } catch (error) {
+        console.error('Fetch error:', error);
+        return null;
+    }
+}
 
         function updateAvailability() {
             fetchAvailability();
         }
 
-        function openTimePicker() {
-            const barberId = document.getElementById('barberSelect').value;
-            const selectedDate = document.getElementById('appointmentDate').value;
+        async function openTimePicker() {
+    const barberId = document.getElementById('barberSelect').value;
+    const selectedDate = document.getElementById('appointmentDate').value;
 
-            if (!barberId || !selectedDate) {
-                alert('Please select barber and date first.');
-                return;
-            }
+    if (!barberId || !selectedDate) {
+        alert('Please select barber and date first.');
+        return;
+    }
 
-            selectedTimeSlot = null;
-            selectedTimeDisplay.textContent = 'None';
-            confirmTimeButton.disabled = true;
+    selectedTimeSlot = null;
+    selectedTimeDisplay.textContent = 'None';
+    confirmTimeButton.disabled = true;
 
-            fetchAvailability().then((slots) => {
-                renderTimeSlots(slots);
-                timePickerModal.style.display = 'flex';
-            });
-        }
+    // Open modal immediately so user sees it's loading
+    timePickerModal.style.display = 'flex';
+    
+    // Refresh availability
+    await fetchAvailability();
+}
 
         function closeTimePickerModal() {
             timePickerModal.style.display = 'none';
         }
 
-        function renderTimeSlots(booked) {
-            const container = timeSlotGrid;
-            container.innerHTML = '';
+        function renderTimeSlots(data) {
+    const container = timeSlotGrid;
+    container.innerHTML = '';
 
-            timeSlots.forEach(time => {
-                const pill = document.createElement('div');
-                pill.className = 'timepicker-pill';
-                pill.textContent = formatTime(time);
+    // Extract data from the API response
+    const booked = data.booked_slots || [];
+    const workStart = data.working_hours ? data.working_hours.start : "09:00";
+    const workEnd = data.working_hours ? data.working_hours.end : "19:00";
 
-                if (booked.includes(time)) {
-                    pill.classList.add('disabled');
-                } else {
-                    pill.addEventListener('click', () => {
-                        selectedTimeSlot = time;
-                        appointmentTimeInput.value = time;
-                        selectedTimeDisplay.textContent = formatTime(time);
-                        confirmTimeButton.disabled = false;
-                        container.querySelectorAll('.timepicker-pill.selected').forEach(el => el.classList.remove('selected'));
-                        pill.classList.add('selected');
-                    });
-                }
+    timeSlots.forEach(time => {
+        // 1. Filter by Working Hours
+        // If the slot is outside the start/end time, we don't even create the pill
+        if (time < workStart || time >= workEnd) {
+            return; 
+        }
 
-                container.appendChild(pill);
+        const pill = document.createElement('div');
+        pill.className = 'timepicker-pill';
+        pill.textContent = formatTime(time);
+
+        // 2. Check if this specific slot is booked
+        // We use .some() to see if any booked slot matches the hour and minute of our 'time'
+        const isBooked = booked.some(slot => {
+            // This handles '09:00:00', '09:00', or even matches '09:37' to '09:30' 
+            // by checking if the hour and first part of the minute match
+            return slot.startsWith(time.substring(0, 4)); 
+        });
+
+        if (isBooked) {
+            pill.classList.add('disabled');
+            pill.title = "Already booked";
+            // No event listener added, so it's not clickable
+        } else {
+            pill.addEventListener('click', () => {
+                selectedTimeSlot = time;
+                selectedTimeDisplay.textContent = formatTime(time);
+                confirmTimeButton.disabled = false;
+                
+                // Visual selection cleanup
+                container.querySelectorAll('.timepicker-pill.selected')
+                         .forEach(el => el.classList.remove('selected'));
+                pill.classList.add('selected');
             });
         }
 
-        confirmTimeButton.addEventListener('click', () => {
-            if (!selectedTimeSlot || bookedSlots.includes(selectedTimeSlot)) return;
-            appointmentTimeInput.value = selectedTimeSlot;
-            closeTimePickerModal();
-        });
+        container.appendChild(pill);
+    });
 
+    // 3. Handle empty results (e.g., if all slots are outside working hours)
+    if (container.innerHTML === '') {
+        container.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #666;">No slots available within working hours.</p>`;
+    }
+}
 
-        cancelTimeButton.addEventListener('click', closeTimePickerModal);
-        closeTimePicker.addEventListener('click', closeTimePickerModal);
-
-        window.addEventListener('click', (event) => {
-            if (event.target === timePickerModal) {
+            confirmTimeButton.addEventListener('click', () => {
+                if (!selectedTimeSlot || bookedSlots.includes(selectedTimeSlot)) return;
+                appointmentTimeInput.value = selectedTimeSlot;
                 closeTimePickerModal();
-            }
-        });
+            });
+
+
+            cancelTimeButton.addEventListener('click', closeTimePickerModal);
+            closeTimePicker.addEventListener('click', closeTimePickerModal);
+
+            window.addEventListener('click', (event) => {
+                if (event.target === timePickerModal) {
+                    closeTimePickerModal();
+                }
+            });
+
 
         function formatTime(time) {
             const [hours, minutes] = time.split(':');

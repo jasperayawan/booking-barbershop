@@ -57,17 +57,37 @@ elseif ($action === 'get-available-slots') {
         exit;
     }
     
-    // Get barber availability
+    // Get barber availability from users table
+    // barber_id could be users.id or barbers.id
     $day = date('l', strtotime($date));
-    $availability = $conn->query("
-        SELECT * FROM barber_availability 
-        WHERE barber_id = $barber_id AND day_of_week = '$day'
-    ")->fetch_assoc();
+    $availability_stmt = $conn->prepare("
+        SELECT u.availability_json 
+        FROM users u 
+        LEFT JOIN barbers b ON u.id = b.user_id 
+        WHERE (b.id = ? OR u.id = ?) AND u.role = 'barber'
+        LIMIT 1
+    ");
+    $availability_stmt->bind_param("ii", $barber_id, $barber_id);
+    $availability_stmt->execute();
+    $avail_row = $availability_stmt->get_result()->fetch_assoc();
     
-    if (!$availability) {
+    if (!$avail_row || empty($avail_row['availability_json'])) {
         echo json_encode(['success' => true, 'data' => []]);
         exit;
     }
+    
+    $availability = json_decode($avail_row['availability_json'], true);
+    $availability = array_change_key_case($availability, CASE_LOWER);
+    $search_day = strtolower($day);
+    
+    if (!isset($availability[$search_day]) || !(int)$availability[$search_day]['is_available']) {
+        echo json_encode(['success' => true, 'data' => []]);
+        exit;
+    }
+    
+    $day_settings = $availability[$search_day];
+    $start_time = $day_settings['start_time'];
+    $end_time = $day_settings['end_time'];
     
     // Get booked appointments
     $booked = $conn->query("
@@ -82,8 +102,8 @@ elseif ($action === 'get-available-slots') {
     
     // Generate available slots (30 min intervals)
     $slots = [];
-    $start = strtotime($availability['start_time']);
-    $end = strtotime($availability['end_time']);
+    $start = strtotime($start_time);
+    $end = strtotime($end_time);
     
     while ($start < $end) {
         $time = date('H:i', $start);

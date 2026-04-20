@@ -24,6 +24,9 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? ($_POST['action'] ?? '');
 
 $barberIds = getBarberIdsForCurrentUser();
+$userIdStr = intval($_SESSION['user_id'] ?? 0);
+
+// Allow matching by barber IDs from barbers table OR by user ID
 if (empty($barberIds)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'No roster barber matched this account yet.']);
@@ -52,7 +55,8 @@ if ($action === 'update-status') {
     }
 
     $st = $conn->real_escape_string($status);
-    $q = "UPDATE appointments SET status = '$st', updated_at = NOW() WHERE id = $id AND barber_id IN ($barberIdIn)";
+    // Check if appointment belongs to this barber (by barbers.id OR users.id)
+    $q = "UPDATE appointments SET status = '$st' WHERE id = $id AND (barber_id IN ($barberIdIn) OR barber_id = $userIdStr)";
     if ($conn->query($q)) {
         if ($conn->affected_rows > 0) {
             echo json_encode(['success' => true, 'message' => 'Status updated']);

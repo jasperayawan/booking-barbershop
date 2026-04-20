@@ -22,11 +22,15 @@ if (isBarber()) {
 $user = getCurrentUser();
 
 // Get user's appointments
+// Uses LEFT JOINs since barber_id might reference users table (id) or barbers table (id)
 $appointments = $conn->query("
-    SELECT a.*, b.name as barber_name, s.name as service_name, s.price
+    SELECT a.*, 
+           COALESCE(b.name, u.full_name) as barber_name, 
+           s.name as service_name, s.price
     FROM appointments a
-    JOIN barbers b ON a.barber_id = b.id
-    JOIN services s ON a.service_id = s.id
+    LEFT JOIN barbers b ON a.barber_id = b.id
+    LEFT JOIN users u ON a.barber_id = u.id AND u.role = 'barber'
+    LEFT JOIN services s ON a.service_id = s.id
     WHERE a.customer_email = '{$conn->real_escape_string($user['email'])}'
     ORDER BY a.appointment_date DESC
 ");
