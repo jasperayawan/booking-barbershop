@@ -110,7 +110,7 @@ $barbers = $conn->query("
     <div class="hero-inner">
 
       <div class="hero-left reveal">
-        <h1>Sharp Cuts, Sharper Style</h1>
+        <h1>Experience the Art <span style="color: #8A38F5;">of Premium Grooming</span></h1>
         <p class="hero-desc">Experience premium grooming at its finest. Our expert barbers deliver precision cuts, clean fades, and classic styles that make you look and feel confident.</p>
         <div class="hero-cta">
           <button class="btn btn-primary" onclick="<?php echo isLoggedIn() ? "window.location.href='book.php'" : "window.location.href='register.php'"; ?>">Book Appointment</button>
